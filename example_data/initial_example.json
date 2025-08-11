@@ -1,0 +1,122 @@
+{
+  "problemStatement": "How does JTF TANGO restore Tangoland territorial integrity while deterring RSEA escalation?",
+  "currentOE": "\u2022 RSEA naval forces pressuring SLOCs\n\u2022 A2AD radars at 70% uptime\n\u2022 HN governance degraded in two districts",
+  "commsStrategy": "Transparent narratives on maritime security; weekly pressers; coalition social amplification",
+  "phases": [
+    {
+      "id": "PH_p1",
+      "name": "Phase 1",
+      "subtitle": "D+0\u2013D+30"
+    },
+    {
+      "id": "PH_p2",
+      "name": "Phase 2",
+      "subtitle": "D+31\u2013D+60"
+    }
+  ],
+  "objectives": [
+    {
+      "id": "OBJ_o1",
+      "text": "Restore Tangoland territorial integrity in 90 days",
+      "moes": "\u2022 Port throughput > 80% baseline\n\u2022 Public sentiment neutral/positive"
+    },
+    {
+      "id": "OBJ_o2",
+      "text": "Deter RSEA escalation",
+      "moes": "\u2022 No new battlegroups cross the 200nm line"
+    }
+  ],
+  "loes": [
+    {
+      "id": "LOE_l1",
+      "title": "Maritime Control",
+      "notes": ""
+    },
+    {
+      "id": "LOE_l2",
+      "title": "Joint Fires & Air Superiority",
+      "notes": ""
+    },
+    {
+      "id": "LOE_l3",
+      "title": "JIM Integration",
+      "notes": ""
+    }
+  ],
+  "effects": [
+    {
+      "id": "EFF_e1",
+      "loeId": "LOE_l1",
+      "text": "SLOCs remain open to Bangkok",
+      "objectives": [
+        "OBJ_o1"
+      ],
+      "phaseId": "PH_p1",
+      "moes": ""
+    },
+    {
+      "id": "EFF_e2",
+      "loeId": "LOE_l2",
+      "text": "RSEA A2AD degraded below combat-effective thresholds",
+      "objectives": [
+        "OBJ_o2"
+      ],
+      "phaseId": "PH_p1",
+      "moes": ""
+    },
+    {
+      "id": "EFF_e3",
+      "loeId": "LOE_l3",
+      "text": "Basic governance restored in key districts",
+      "objectives": [
+        "OBJ_o1"
+      ],
+      "phaseId": "PH_p2",
+      "moes": ""
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TSK_t1",
+      "effectId": "EFF_e1",
+      "text": "Establish MEZ and surge MDA ISR",
+      "phaseId": "PH_p1",
+      "mops": "\u2022 2 ISR orbits/day",
+      "risk": {
+        "likelihood": 2,
+        "impact": 3
+      }
+    },
+    {
+      "id": "TSK_t2",
+      "effectId": "EFF_e2",
+      "text": "SEAD/DEAD on radar nodes; LRPF on logistics",
+      "phaseId": "PH_p1",
+      "mops": "\u2022 Radar uptime <30%",
+      "risk": {
+        "likelihood": 3,
+        "impact": 4
+      }
+    },
+    {
+      "id": "TSK_t3",
+      "effectId": "EFF_e3",
+      "text": "USAID stabilization pilot + police training",
+      "phaseId": "PH_p2",
+      "mops": "\u2022 Police patrols 2x daily",
+      "risk": {
+        "likelihood": 2,
+        "impact": 2
+      }
+    }
+  ],
+  "decisivePoints": [],
+  "assumptions": [],
+  "ccir": [],
+  "resources": {
+    "liftHours": 1200,
+    "isrOrbits": 6,
+    "logisticsThroughput": "amber",
+    "authorities": "standard"
+  }
+}
