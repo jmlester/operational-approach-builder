@@ -1,0 +1,16 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f8f9fa;
+  margin: 0;
+  padding: 0;
+}
+
+.app {
+  padding: 1rem;
+}
+
+/* Ensure Live OA takes full width */
+.live-oa-container {
+  width: 100%;
+  overflow-x: auto;
+}

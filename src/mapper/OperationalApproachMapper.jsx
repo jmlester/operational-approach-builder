@@ -1,310 +1,466 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react'
-import { useOAStore } from './store.js'
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import RiskMatrix2 from "./components/RiskMatrix2";
 
-function Button({children,onClick,variant='primary',title}){
-  const cls = ['btn']
-  if(variant==='primary') cls.push('primary')
-  if(variant==='danger') cls.push('danger')
-  if(variant==='ghost') cls.push('ghost')
-  return <button type="button" className={cls.join(' ')} title={title} onClick={(e)=>{e.stopPropagation();onClick?.(e)}}>{children}</button>
-}
+/**
+ * Simple shape of the app's data.
+ */
+const defaultPhases = [
+  { id: "p1", name: "Phase 1", window: "D+0–D+30" },
+  { id: "p2", name: "Phase 2", window: "D+31–D+60" },
+  { id: "p3", name: "Phase 3", window: "D+61–D+90" }
+];
 
-function CopyModal({open,title,text,onClose}){
-  const ref = useRef(null)
-  useEffect(()=>{ if(open){ setTimeout(()=> ref.current?.focus(),150) } },[open])
-  if(!open) return null
+const defaultLOEs = [
+  { id: "l1", name: "Maritime Interdiction" },
+  { id: "l2", name: "Coastal Defense" },
+  { id: "l3", name: "Air Superiority" },
+  { id: "l4", name: "Coalition Force Integration" }
+];
+
+const emptyBoard = (phases, loes) => {
+  // board[phaseId][loeId] -> array of strings (bullets)
+  const board = {};
+  phases.forEach((p) => {
+    board[p.id] = {};
+    loes.forEach((l) => (board[p.id][l.id] = []));
+  });
+  return board;
+};
+
+const defaultRisks = [
+  // { id, label, likelihood:1..5, impact:1..5 }
+];
+
+export default function OperationalApproachMapper() {
+  // Top inputs
+  const [title, setTitle] = useState("Operational Approach (Live)");
+  const [problem, setProblem] = useState("");
+  const [currentOE, setCurrentOE] = useState("");
+  const [desiredConditions, setDesiredConditions] = useState("");
+  const [militaryEndState, setMilitaryEndState] = useState("");
+
+  // Structure
+  const [phases, setPhases] = useState(defaultPhases);
+  const [loes, setLoe] = useState(defaultLOEs);
+  const [board, setBoard] = useState(() => emptyBoard(defaultPhases, defaultLOEs));
+
+  // Decisive points (each mapped to a phase id)
+  const [decisivePoints, setDP] = useState([
+    { id: "dp1", text: "Neutralization of Redland A2/AD", phaseId: "p1" },
+    { id: "dp2", text: "Establishment of Coalition C2", phaseId: "p2" }
+  ]);
+
+  // Risks (drive the heatmap)
+  const [risks, setRisks] = useState(defaultRisks);
+
+  // Import / export
+  const fileRef = useRef(null);
+
+  const stateToExport = useMemo(
+    () => ({
+      title,
+      problem,
+      currentOE,
+      desiredConditions,
+      militaryEndState,
+      phases,
+      loes,
+      board,
+      decisivePoints,
+      risks
+    }),
+    [title, problem, currentOE, desiredConditions, militaryEndState, phases, loes, board, decisivePoints, risks]
+  );
+
+  const importJSON = (obj) => {
+    if (!obj) return;
+    setTitle(obj.title || "");
+    setProblem(obj.problem || "");
+    setCurrentOE(obj.currentOE || "");
+    setDesiredConditions(obj.desiredConditions || "");
+    setMilitaryEndState(obj.militaryEndState || "");
+    setPhases(obj.phases?.length ? obj.phases : defaultPhases);
+    setLoe(obj.loes?.length ? obj.loes : defaultLOEs);
+    setBoard(obj.board || emptyBoard(obj.phases || defaultPhases, obj.loes || defaultLOEs));
+    setDP(obj.decisivePoints || []);
+    setRisks(obj.risks || []);
+  };
+
+  // helpers
+  const addPhase = () => {
+    const id = crypto.randomUUID();
+    const p = { id, name: `Phase ${phases.length + 1}`, window: "—" };
+    const next = [...phases, p];
+    // expand board
+    const nextBoard = { ...board, [id]: {} };
+    loes.forEach((l) => (nextBoard[id][l.id] = []));
+    setPhases(next);
+    setBoard(nextBoard);
+  };
+
+  const removePhase = (pid) => {
+    const next = phases.filter((p) => p.id !== pid);
+    const nextBoard = { ...board };
+    delete nextBoard[pid];
+    setPhases(next);
+    setBoard(nextBoard);
+    setDP((dps) => dps.filter((d) => d.phaseId !== pid));
+  };
+
+  const addLoe = () => {
+    const id = crypto.randomUUID();
+    const l = { id, name: `LOE ${loes.length + 1}` };
+    const next = [...loes, l];
+    const nextBoard = structuredClone(board);
+    Object.keys(nextBoard).forEach((pid) => (nextBoard[pid][id] = []));
+    setLoe(next);
+    setBoard(nextBoard);
+  };
+
+  const removeLoe = (lid) => {
+    const next = loes.filter((l) => l.id !== lid);
+    const nextBoard = structuredClone(board);
+    Object.keys(nextBoard).forEach((pid) => delete nextBoard[pid][lid]);
+    setLoe(next);
+    setBoard(nextBoard);
+  };
+
+  const addBullet = (pid, lid) => {
+    const text = prompt("Add task/effect text:");
+    if (!text) return;
+    setBoard((b) => {
+      const nb = structuredClone(b);
+      nb[pid][lid].push(text);
+      return nb;
+    });
+  };
+
+  const editBullet = (pid, lid, idx) => {
+    const current = board[pid][lid][idx] ?? "";
+    const text = prompt("Edit text:", current);
+    if (text === null) return;
+    setBoard((b) => {
+      const nb = structuredClone(b);
+      nb[pid][lid][idx] = text;
+      return nb;
+    });
+  };
+
+  const deleteBullet = (pid, lid, idx) => {
+    setBoard((b) => {
+      const nb = structuredClone(b);
+      nb[pid][lid].splice(idx, 1);
+      return nb;
+    });
+  };
+
+  const addRisk = () => {
+    const label = prompt("Risk label:");
+    if (!label) return;
+    const likelihood = Number(prompt("Likelihood (1–5):", "3")) || 3;
+    const impact = Number(prompt("Impact (1–5):", "3")) || 3;
+    setRisks((r) => [...r, { id: crypto.randomUUID(), label, likelihood, impact }]);
+  };
+
+  const onHeatCellClick = (row, col) => {
+    // quick ad‑hoc add/edit from heatmap click
+    const existing = risks.find((r) => r.likelihood === row && r.impact === col);
+    if (existing) {
+      const nextLabel = prompt("Edit risk label (blank to delete):", existing.label ?? "");
+      if (nextLabel === null) return;
+      if (nextLabel.trim() === "") {
+        setRisks((rs) => rs.filter((r) => r.id !== existing.id));
+      } else {
+        setRisks((rs) => rs.map((r) => (r.id === existing.id ? { ...r, label: nextLabel } : r)));
+      }
+    } else {
+      const label = prompt(`Add risk @ L${row}/I${col}:`);
+      if (!label) return;
+      setRisks((rs) => [...rs, { id: crypto.randomUUID(), label, likelihood: row, impact: col }]);
+    }
+  };
+
   return (
-    <div className="copy-backdrop" role="dialog" aria-modal="true" aria-label="Copy Prompt">
-      <div className="card" style={{width:720,maxWidth:'95%'}}>
-        <div className="header"><strong>{title}</strong><button className="btn" onClick={onClose}>Close</button></div>
-        <p className="small">Clipboard may be blocked. Use Select All + Copy, or download a .txt.</p>
-        <textarea ref={ref} defaultValue={text} className="input" style={{height:280}} onFocus={(e)=>e.target.select()} />
-        <div className="hstack" style={{marginTop:8}}>
-          <Button variant="ghost" onClick={()=>{ ref.current?.select() }}>Select All</Button>
-          <Button variant="ghost" onClick={()=>{ const blob=new Blob([text],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(title||'prompt')+'.txt'; a.click(); URL.revokeObjectURL(a.href);}}>Download .txt</Button>
-          <Button variant="primary" onClick={async()=>{ try{ await navigator.clipboard.writeText(text); alert('Copied (if permitted)') } catch { alert('Blocked. Use Select All + Copy.') }}}>Try Clipboard</Button>
+    <div className="oam-shell">
+      {/* CONTROL BAR */}
+      <div className="oam-inputs">
+        <div className="oam-row">
+          <label>Slide Title</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
-      </div>
-    </div>
-  )
-}
 
-function Card({children,onDelete,ariaLabel}){
-  return (
-    <div className="card" tabIndex={0} aria-label={ariaLabel}>
-      {onDelete && <button type="button" className="delete-x" onClick={(e)=>{ e.stopPropagation(); onDelete() }} title="Soft‑delete">×</button>}
-      {children}
-    </div>
-  )
-}
-
-export default function OperationalApproachMapper(){
-  const store = useOAStore()
-  const [toast,setToast] = useState(null)
-  const [copyModal,setCopyModal] = useState({open:false,title:'',text:''})
-  const fileRef = useRef(null)
-
-  useEffect(()=>{
-    const h = (e)=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); store.undo(); setToast({msg:'Undid last action'}) } }
-    window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h)
-  },[])
-
-  const phaseOptions = useMemo(()=> store.phases.map(p=>({value:p.id,label:p.name+(p.subtitle?(' — '+p.subtitle):'')})),[store.phases])
-  const loeOptions = useMemo(()=> store.loes.map(l=>({value:l.id,label:l.title||l.id})),[store.loes])
-  const effectOptions = useMemo(()=> store.effects.map(e=>({value:e.id,label:e.text.slice(0,60)||e.id})),[store.effects])
-
-  const showToast=(msg)=>{ setToast({msg}); setTimeout(()=>setToast(null), 2500) }
-
-  const stateJson = useMemo(()=> ({
-    problemStatement:store.problemStatement,
-    currentOE:store.currentOE,
-    commsStrategy:store.commsStrategy,
-    phases:store.phases, objectives:store.objectives, loes:store.loes,
-    effects:store.effects, tasks:store.tasks, decisivePoints:store.dp,
-    assumptions:store.assumptions, ccir:store.ccir, resources:store.resources
-  }),[store.problemStatement,store.currentOE,store.commsStrategy,store.phases,store.objectives,store.loes,store.effects,store.tasks,store.dp,store.assumptions,store.ccir,store.resources])
-
-  const copyForAI = (mode='Coach')=>{
-    const text = `Persona: ${mode}\nAction: coaching/doctrine/red team\nContext: JSON follows\nJSON:\n`+JSON.stringify(stateJson,null,2)
-    try{
-      navigator.clipboard?.writeText
-        ? navigator.clipboard.writeText(text).then(()=> showToast('Copied to clipboard')).catch(()=> setCopyModal({open:true,title:`${mode}_Review_Prompt`,text}))
-        : setCopyModal({open:true,title:`${mode}_Review_Prompt`,text})
-    }catch{ setCopyModal({open:true,title:`${mode}_Review_Prompt`,text}) }
-  }
-
-  const exportJson=()=>{
-    try{
-      const blob=new Blob([JSON.stringify(stateJson,null,2)],{type:'application/json'})
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='operational_approach.json'; a.click(); URL.revokeObjectURL(a.href);
-      showToast('Exported JSON')
-    }catch(err){ showToast('Export failed: '+String(err)) }
-  }
-
-  const softDelete = (type, entity) => {
-    if(!confirm(`Soft‑delete this ${type}? You can restore it from Trash.`)) return
-    store.softDelete({ type, ...entity })
-    showToast(`${type} moved to Trash`)
-  }
-
-  return (
-    <div>
-      {toast && <div className="toast">{toast.msg}</div>}
-      <CopyModal open={copyModal.open} title={copyModal.title} text={copyModal.text} onClose={()=>setCopyModal({open:false,title:'',text:''})} />
-
-      <div className="hstack" style={{justifyContent:'space-between', marginBottom:12}}>
-        <div className="hstack">
-          <Button onClick={()=>exportJson()}>Export JSON</Button>
-          <input ref={fileRef} type="file" accept="application/json" style={{display:'none'}} onChange={(e)=>{
-            const file=e.target.files?.[0]; if(!file){ showToast('No file selected'); return }
-            const reader=new FileReader(); reader.onload=ev=>{
-              try{
-                const data=JSON.parse(String(ev.target?.result||'{}'))
-                if(!data.phases || !data.loes){ showToast('Invalid file: missing phases/loes'); return }
-                Object.keys(data).forEach(k=> { if(typeof data[k]==='undefined') delete data[k] })
-                useOAStore.setState(data); showToast('Imported JSON')
-              }catch(err){ showToast('Import failed: '+String(err)) }
-            }; reader.readAsText(file)
-          }} />
-          <Button variant="ghost" onClick={()=>fileRef.current?.click()}>Import JSON</Button>
-          <Button variant="ghost" onClick={()=>copyForAI('Coach')}>Copy for AI</Button>
-          <Button variant="ghost" onClick={()=>copyForAI('Doctrine')}>Doctrine Check</Button>
-          <Button variant="danger" onClick={()=>copyForAI('RedTeam')}>Red Team</Button>
+        <div className="oam-row">
+          <label>Problem Statement</label>
+          <textarea value={problem} onChange={(e) => setProblem(e.target.value)} />
         </div>
-        <div className="hstack">
-          <Button variant="ghost" onClick={()=> useOAStore.setState({ showTrash:true })}>Trash ({store.trash.length})</Button>
-          <Button variant="ghost" onClick={()=> store.undo()}>Undo</Button>
-        </div>
-      </div>
 
-      {store.showTrash && (
-        <div className="card" style={{marginBottom:12}}>
-          <div className="header">
-            <strong>Trash</strong>
-            <Button variant="ghost" onClick={()=> useOAStore.setState({ showTrash:false })}>Close</Button>
-          </div>
-          <div className="row cols-3">
-            {store.trash.length===0 && <div className="small">Nothing here.</div>}
-            {store.trash.map(t=> (
-              <div key={t.id} className="card">
-                <div className="small"><strong>{t.type}</strong> — {new Date(t.deletedAt).toLocaleString()}</div>
-                <pre className="small" style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(t, null, 2)}</pre>
-                <div className="hstack">
-                  <Button onClick={()=>{ store.restoreFromTrash(t.id); }}>Restore</Button>
-                  <Button variant="danger" onClick={()=>{ if(confirm('Permanently delete?')){ store.purgeTrashItem(t.id); } }}>Delete forever</Button>
-                </div>
+        <div className="oam-row">
+          <label>Current OE</label>
+          <textarea value={currentOE} onChange={(e) => setCurrentOE(e.target.value)} />
+        </div>
+
+        <div className="oam-row">
+          <label>Desired Conditions</label>
+          <textarea value={desiredConditions} onChange={(e) => setDesiredConditions(e.target.value)} />
+        </div>
+
+        <div className="oam-row">
+          <label>Military End State</label>
+          <textarea value={militaryEndState} onChange={(e) => setMilitaryEndState(e.target.value)} />
+        </div>
+
+        {/* Phases + LOEs */}
+        <div className="oam-columns">
+          <div className="card">
+            <div className="card-h">
+              <h4>Phases</h4>
+              <button className="btn" onClick={addPhase}>+ Add Phase</button>
+            </div>
+            {phases.map((p) => (
+              <div key={p.id} className="row-flex">
+                <input
+                  value={p.name}
+                  onChange={(e) =>
+                    setPhases((arr) => arr.map((x) => (x.id === p.id ? { ...x, name: e.target.value } : x)))
+                  }
+                  className="mr8"
+                />
+                <input
+                  value={p.window}
+                  onChange={(e) =>
+                    setPhases((arr) => arr.map((x) => (x.id === p.id ? { ...x, window: e.target.value } : x)))
+                  }
+                  className="mr8"
+                  placeholder="Timing window"
+                />
+                <button className="btn danger" onClick={() => removePhase(p.id)}>×</button>
               </div>
             ))}
           </div>
-        </div>
-      )}
 
-      <div className="row cols-3">
-        <Card ariaLabel="Problem Statement">
-          <label>Problem Statement<textarea className="input" value={store.problemStatement} onChange={(e)=>useOAStore.setState({problemStatement:e.target.value})} rows={3}/></label>
-        </Card>
-        <Card ariaLabel="Current OE">
-          <label>Current OE<textarea className="input" value={store.currentOE} onChange={(e)=>useOAStore.setState({currentOE:e.target.value})} rows={6}/></label>
-        </Card>
-        <Card ariaLabel="Comms Strategy">
-          <label>Comms Strategy<textarea className="input" value={store.commsStrategy} onChange={(e)=>useOAStore.setState({commsStrategy:e.target.value})} rows={6}/></label>
-        </Card>
-      </div>
-
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>Phase Manager</strong><Button onClick={()=> store.addPhase()}>Add Phase</Button></div>
-        <div className="row cols-3">
-          {store.phases.map(p=>(
-            <Card key={p.id} ariaLabel="Phase">
-              <button type="button" className="delete-x" onClick={()=> softDelete('phase', p)} title="Soft‑delete">×</button>
-              <label>Name<input className="input" value={p.name} onChange={(e)=> useOAStore.setState({ phases: store.phases.map(x=>x.id===p.id?{...x,name:e.target.value}:x) })}/></label>
-              <label>Time/Transition<input className="input" value={p.subtitle} onChange={(e)=> useOAStore.setState({ phases: store.phases.map(x=>x.id===p.id?{...x,subtitle:e.target.value}:x) })}/></label>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>Objectives (Ends)</strong><Button onClick={()=> store.addObjective()}>Add Objective</Button></div>
-        <div className="row cols-3">
-          {store.objectives.map(o=>(
-            <Card key={o.id} ariaLabel="Objective">
-              <button type="button" className="delete-x" onClick={()=> softDelete('objective', o)} title="Soft‑delete">×</button>
-              <label>Objective<textarea className="input" value={o.text} onChange={(e)=> useOAStore.setState({ objectives: store.objectives.map(x=>x.id===o.id?{...x,text:e.target.value}:x) })} rows={3}/></label>
-              <label>MOEs<textarea className="input" value={o.moes} onChange={(e)=> useOAStore.setState({ objectives: store.objectives.map(x=>x.id===o.id?{...x,moes:e.target.value}:x) })} rows={2}/></label>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>Lines of Effort (Ways)</strong><Button onClick={()=> store.addLoe()}>Add LOE</Button></div>
-        <div className="row cols-3">
-          {store.loes.map(l=>(
-            <Card key={l.id} ariaLabel="LOE">
-              <button type="button" className="delete-x" onClick={()=> softDelete('loe', l)} title="Soft‑delete">×</button>
-              <label>Title<input className="input" value={l.title} onChange={(e)=> useOAStore.setState({ loes: store.loes.map(x=>x.id===l.id?{...x,title:e.target.value}:x) })}/></label>
-              <label>Notes<textarea className="input" value={l.notes} onChange={(e)=> useOAStore.setState({ loes: store.loes.map(x=>x.id===l.id?{...x,notes:e.target.value}:x) })} rows={2}/></label>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>Effects</strong><Button onClick={()=> store.addEffect()}>Add Effect</Button></div>
-        <div className="row cols-3">
-          {store.effects.map(e=>(
-            <Card key={e.id} ariaLabel="Effect">
-              <button type="button" className="delete-x" onClick={()=> softDelete('effect', e)} title="Soft‑delete">×</button>
-              <label>LOE<select className="input" value={e.loeId} onChange={(ev)=> useOAStore.setState({ effects: store.effects.map(x=>x.id===e.id?{...x,loeId:ev.target.value}:x) })}>
-                <option value="">Select...</option>
-                {loeOptions.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select></label>
-              <label>Effect<textarea className="input" value={e.text} onChange={(ev)=> useOAStore.setState({ effects: store.effects.map(x=>x.id===e.id?{...x,text:ev.target.value}:x) })} rows={3}/></label>
-              <label>Phase<select className="input" value={e.phaseId} onChange={(ev)=> useOAStore.setState({ effects: store.effects.map(x=>x.id===e.id?{...x,phaseId:ev.target.value}:x) })}>
-                <option value="">Select...</option>
-                {phaseOptions.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select></label>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>Tasks</strong><Button onClick={()=> store.addTask()}>Add Task</Button></div>
-        <div className="row cols-3">
-          {store.tasks.map(t=>(
-            <Card key={t.id} ariaLabel="Task">
-              <button type="button" className="delete-x" onClick={()=> softDelete('task', t)} title="Soft‑delete">×</button>
-              <label>Effect<select className="input" value={t.effectId} onChange={(ev)=> useOAStore.setState({ tasks: store.tasks.map(x=>x.id===t.id?{...x,effectId:ev.target.value}:x) })}>
-                <option value="">Select...</option>
-                {effectOptions.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select></label>
-              <label>Task<textarea className="input" value={t.text} onChange={(ev)=> useOAStore.setState({ tasks: store.tasks.map(x=>x.id===t.id?{...x,text:ev.target.value}:x) })} rows={3}/></label>
-              <label>Phase<select className="input" value={t.phaseId} onChange={(ev)=> useOAStore.setState({ tasks: store.tasks.map(x=>x.id===t.id?{...x,phaseId:ev.target.value}:x) })}>
-                <option value="">Select...</option>
-                {phaseOptions.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select></label>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Live One-Slide (auto-condense) */}
-      <div className="card" style={{marginTop:12}}>
-        <div className="header"><strong>One‑Slide Operational Approach (Live)</strong></div>
-        <div className="one-slide"><AutoCondense OA={store} /></div>
-      </div>
-    </div>
-  )
-}
-
-function AutoCondense({OA}){
-  const phases = OA.phases.length || 1
-  const loes = OA.loes.length || 1
-  const effCount = OA.effects.length
-  const tskCount = OA.tasks.length
-  const density = (effCount + tskCount) / (phases * Math.max(1, loes))
-  const scale = density > 12 ? 0.75 : density > 8 ? 0.85 : density > 5 ? 0.9 : 1
-  const style = { transform:`scale(${scale})`, transformOrigin:'top left', width:`${100/scale}%` }
-
-  return (
-    <div style={style}>
-      <div className="hstack" style={{justifyContent:'space-between', marginBottom:8}}>
-        <div>
-          <div className="small">Operational Approach</div>
-          <div><strong>{OA.problemStatement || 'Problem Statement'}</strong></div>
-        </div>
-        <div className="badge">Phases: {OA.phases.length}</div>
-      </div>
-      <div className="row cols-3">
-        <div>
-          <div className="small">Current OE</div>
-          <div className="card"><div className="small" style={{whiteSpace:'pre-wrap'}}>{OA.currentOE}</div></div>
-        </div>
-        <div>
-          <div className="row" style={{gridTemplateColumns:`repeat(${Math.max(1,OA.phases.length)}, minmax(160px,1fr))`, gridGap:8}}>
-            {OA.phases.map(p=> (
-              <div key={p.id} className="phase-head">
-                <div style={{fontWeight:600,fontSize:12}}>{p.name}</div>
-                <div className="small">{p.subtitle}</div>
+          <div className="card">
+            <div className="card-h">
+              <h4>Lines of Effort</h4>
+              <button className="btn" onClick={addLoe}>+ Add LOE</button>
+            </div>
+            {loes.map((l) => (
+              <div key={l.id} className="row-flex">
+                <input
+                  value={l.name}
+                  onChange={(e) => setLoe((arr) => arr.map((x) => (x.id === l.id ? { ...x, name: e.target.value } : x)))}
+                  className="mr8"
+                />
+                <button className="btn danger" onClick={() => removeLoe(l.id)}>×</button>
               </div>
             ))}
           </div>
-          <div className="vstack" style={{marginTop:8}}>
-            {OA.loes.map(l=> (
-              <div key={l.id} className="swimlane">
-                <div className="small"><strong>LOE:</strong> {l.title}</div>
-                <div className="row" style={{gridTemplateColumns:`repeat(${Math.max(1,OA.phases.length)}, minmax(160px,1fr))`, gridGap:8}}>
-                  {OA.phases.map(p=> {
-                    const effs = OA.effects.filter(e=> e.loeId===l.id && e.phaseId===p.id)
-                    const tsks = OA.tasks.filter(t=> effs.some(e=> e.id===t.effectId) && t.phaseId===p.id)
-                    return (
-                      <div key={p.id} className="card">
-                        {effs.map(e=> <div key={e.id} className="eff">♦ {e.text}</div>)}
-                        {tsks.map(t=> <div key={t.id} className="task">■ {t.text}</div>)}
-                        {(!effs.length && !tsks.length) && <div className="small" style={{textAlign:'center'}}>—</div>}
-                      </div>
+
+          <div className="card">
+            <div className="card-h">
+              <h4>Decisive Points</h4>
+              <button
+                className="btn"
+                onClick={() =>
+                  setDP((dps) => [...dps, { id: crypto.randomUUID(), text: "New DP", phaseId: phases[0]?.id }])
+                }
+              >
+                + Add DP
+              </button>
+            </div>
+            {decisivePoints.map((d) => (
+              <div key={d.id} className="row-flex">
+                <input
+                  value={d.text}
+                  onChange={(e) =>
+                    setDP((arr) => arr.map((x) => (x.id === d.id ? { ...x, text: e.target.value } : x)))
+                  }
+                  className="mr8"
+                />
+                <select
+                  value={d.phaseId}
+                  onChange={(e) =>
+                    setDP((arr) => arr.map((x) => (x.id === d.id ? { ...x, phaseId: e.target.value } : x)))
+                  }
+                  className="mr8"
+                >
+                  {phases.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button className="btn danger" onClick={() => setDP((arr) => arr.filter((x) => x.id !== d.id))}>×</button>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <div className="card-h">
+              <h4>Operational Risks</h4>
+              <button className="btn" onClick={addRisk}>+ Add Risk</button>
+            </div>
+            {risks.map((r) => (
+              <div key={r.id} className="row-flex">
+                <input
+                  value={r.label}
+                  onChange={(e) =>
+                    setRisks((arr) => arr.map((x) => (x.id === r.id ? { ...x, label: e.target.value } : x)))
+                  }
+                  className="mr8"
+                />
+                <select
+                  value={r.likelihood}
+                  onChange={(e) =>
+                    setRisks((arr) =>
+                      arr.map((x) => (x.id === r.id ? { ...x, likelihood: Number(e.target.value) } : x))
                     )
-                  })}
-                </div>
+                  }
+                  className="mr8"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>L{n}</option>
+                  ))}
+                </select>
+                <select
+                  value={r.impact}
+                  onChange={(e) =>
+                    setRisks((arr) => arr.map((x) => (x.id === r.id ? { ...x, impact: Number(e.target.value) } : x)))
+                  }
+                  className="mr8"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>I{n}</option>
+                  ))}
+                </select>
+                <button className="btn danger" onClick={() => setRisks((arr) => arr.filter((x) => x.id !== r.id))}>×</button>
               </div>
             ))}
           </div>
         </div>
-        <div>
-          <div className="small">Objectives</div>
-          <div className="vstack">
-            {OA.objectives.map((o,i)=> (
-              <div key={o.id} className="card">
-                <div className="small"><strong>Objective {i+1}</strong></div>
-                <div className="small">{o.text}</div>
-                {o.moes && <div className="small"><strong>MOEs:</strong> {o.moes}</div>}
-              </div>
-            ))}
+
+        {/* Import/Export */}
+        <div className="oam-row gap8">
+          <button
+            className="btn"
+            onClick={() => {
+              const blob = new Blob([JSON.stringify(stateToExport, null, 2)], { type: "application/json" });
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "operational_approach.json";
+              a.click();
+            }}
+          >
+            Export JSON
+          </button>
+          <input
+            type="file"
+            ref={fileRef}
+            accept="application/json"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              try {
+                const text = await f.text();
+                importJSON(JSON.parse(text));
+              } catch (err) {
+                alert("Invalid JSON.");
+              } finally {
+                e.target.value = "";
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      {/* LIVE VIEW – full width */}
+      <div className="oam-live">
+        <div className="live-h">
+          <div className="live-title">{title}</div>
+          <div className="chiprow">
+            <span className="chip">Objective</span>
+            <span className="chip">Line of Effort</span>
+            <span className="chip">Task</span>
+            <span className="chip chip-warn">Decisive Point</span>
+            <span className="chip chip-risk">Operational Risk</span>
           </div>
+        </div>
+
+        {/* Overview boxes */}
+        <div className="live-overview">
+          <div className="box">
+            <div className="box-h">Problem</div>
+            <div className="box-b">{problem || "—"}</div>
+          </div>
+          <div className="box">
+            <div className="box-h">Current OE</div>
+            <div className="box-b">{currentOE || "—"}</div>
+          </div>
+          <div className="box">
+            <div className="box-h">Desired Conditions</div>
+            <div className="box-b">{desiredConditions || "—"}</div>
+          </div>
+          <div className="box">
+            <div className="box-h">Military End State</div>
+            <div className="box-b">{militaryEndState || "—"}</div>
+          </div>
+        </div>
+
+        {/* Phases x LOEs board */}
+        <div className="board">
+          {phases.map((p) => (
+            <div key={p.id} className="col">
+              <div className="col-h">
+                <div className="col-title">{p.name}</div>
+                <div className="col-sub">{p.window}</div>
+                {/* DPs for this phase */}
+                <div className="dps">
+                  {decisivePoints
+                    .filter((d) => d.phaseId === p.id)
+                    .map((d) => (
+                      <span key={d.id} className="chip chip-warn small">
+                        {d.text}
+                      </span>
+                    ))}
+                </div>
+              </div>
+
+              {loes.map((l) => (
+                <div key={l.id} className="cell">
+                  <div className="cell-h">{l.name}</div>
+
+                  <div className="cell-body">
+                    {board[p.id][l.id].length === 0 && <div className="placeholder">—</div>}
+
+                    {board[p.id][l.id].map((t, idx) => (
+                      <div key={`${l.id}-${idx}`} className="bullet">
+                        <span className="dot">•</span>
+                        <span className="text" onClick={() => editBullet(p.id, l.id, idx)} title="Click to edit">
+                          {t}
+                        </span>
+                        <button
+                          className="x"
+                          title="Delete"
+                          onClick={() => deleteBullet(p.id, l.id, idx)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="cell-actions">
+                    <button className="btn tiny" onClick={() => addBullet(p.id, l.id)}>+ Task / Effect</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Risk Heatmap */}
+        <div className="heatmap-wrap">
+          <div className="section-h">Risk Heatmap</div>
+          <RiskMatrix2 risks={risks} onCellClick={onHeatCellClick} />
         </div>
       </div>
     </div>
-  )
+  );
 }

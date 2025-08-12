@@ -1,97 +1,212 @@
-import { create } from 'zustand'
-import example from '../../example_data/initial_example.json'
+// src/mapper/store.js
+// Centralized normalization + import/export helpers for the Operational Approach state
 
-const uid = (p='id') => `${p}_${Math.random().toString(36).slice(2,9)}`
+export const initialState = {
+  problemStatement: "",
+  currentOE: "",
+  desiredConditions: [],
+  endState: "",
+  phases: [],
+  objectives: [],
+  loes: [],
+  effects: [],
+  tasks: [],
+  dp: [],
+  cogs: {
+    friendly: { cog: "", cc: [], cr: [], cv: [] },
+    adversary: { cog: "", cc: [], cr: [], cv: [] },
+  },
+  opRisks: [],
+  visibility: {
+    showCurrentOE: true,
+    showCOGs: true,
+    showDesiredConditions: true,
+    showDPs: true,
+    showObjectives: true,
+    showEndState: true,
+    showLegend: true,
+    showRiskHeatmap: true,
+    showComms: true,
+  },
+  commsStrategy: "",
+};
 
-const decorate = (data) => ({
-  ...data,
-  trash: [], undoStack: [], showTrash:false,
-  // safety defaults if example is missing any field
-  phases: data.phases?.length ? data.phases : [{id:uid('PH'), name:'Phase 1', subtitle:''}],
-  objectives: data.objectives||[],
-  loes: data.loes||[],
-  effects: data.effects||[],
-  tasks: data.tasks||[],
-  dp: data.decisivePoints||[],
-  assumptions: data.assumptions||[],
-  ccir: data.ccir||[],
-  resources: data.resources || { liftHours:0, isrOrbits:0, logisticsThroughput:'amber', authorities:'standard' },
-  problemStatement: data.problemStatement||'',
-  currentOE: data.currentOE||'',
-  commsStrategy: data.commsStrategy||'',
-})
+// ---- utilities ----
 
-function loadInitial(){
-  try{
-    const saved = localStorage.getItem('oa_state_v1')
-    if(saved){ return JSON.parse(saved) }
-  }catch{ /* ignore */ }
-  return decorate(example)
+const clamp15 = (n) => Math.max(1, Math.min(5, n));
+
+const toScore = (v) => {
+  if (v == null) return 1;
+  if (typeof v === "number" && Number.isFinite(v)) return clamp15(v);
+  const m = String(v).trim().toLowerCase();
+  const lut = {
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+    low: 1, med: 3, medium: 3, high: 4, critical: 5, crit: 5,
+  };
+  const num = lut[m] ?? Number(m);
+  return clamp15(Number.isFinite(num) ? num : 1);
+};
+
+const asArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+const uniqById = (arr) => {
+  const seen = new Set();
+  return arr.filter((x) => {
+    const id = x?.id ?? x?.title ?? x?.text;
+    if (!id) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
+// ---- NORMALIZER ----
+
+export function normalize(data = {}) {
+  // Desired conditions can be strings or objects
+  const desiredConditions = Array.isArray(data.desiredConditions)
+    ? data.desiredConditions.map((d, i) =>
+        typeof d === "string" ? { id: `DC_${i}`, text: d } : { id: d.id ?? `DC_${i}`, text: d.text ?? "" }
+      )
+    : [];
+
+  // LOEs must be unique and ordered; remove blanks
+  const loes = uniqById(
+    asArray(data.loes)
+      .map((l, i) => ({
+        id: l.id ?? `LOE_${i + 1}`,
+        title: (l.title ?? l.name ?? "").trim() || `LOE ${i + 1}`,
+        notes: l.notes ?? "",
+      }))
+      .filter((l) => l.title)
+  );
+
+  // Effects: ensure loe linkage is valid; drop orphaned effects
+  const loeIds = new Set(loes.map((l) => l.id));
+  const effects = uniqById(
+    asArray(data.effects)
+      .map((e, i) => ({
+        id: e.id ?? `EFF_${i + 1}`,
+        loeId: e.loeId && loeIds.has(e.loeId) ? e.loeId : null,
+        text: (e.text ?? e.name ?? "").trim(),
+        objectives: asArray(e.objectives),
+        phaseId: e.phaseId ?? null,
+        moes: e.moes ?? "",
+        cogRef: e.cogRef ?? null,
+      }))
+      .filter((e) => e.text && e.loeId)
+  );
+
+  // Tasks: ensure effect linkage is valid; drop orphaned tasks
+  const effIds = new Set(effects.map((e) => e.id));
+  const tasks = uniqById(
+    asArray(data.tasks)
+      .map((t, i) => ({
+        id: t.id ?? `TSK_${i + 1}`,
+        effectId: t.effectId && effIds.has(t.effectId) ? t.effectId : null,
+        text: (t.text ?? t.name ?? "").trim(),
+        phaseId: t.phaseId ?? null,
+        mops: t.mops ?? "",
+        // Explicitly remove any "risk" fields from tasks (risks live only in opRisks)
+      }))
+      .filter((t) => t.text && t.effectId)
+  );
+
+  // Phases
+  const phases = uniqById(
+    asArray(data.phases).map((p, i) => ({
+      id: p.id ?? `PH_${i + 1}`,
+      name: (p.name ?? `Phase ${i + 1}`).trim(),
+      subtitle: p.subtitle ?? p.timeHorizon ?? "",
+      color: p.color ?? "",
+      order: Number.isFinite(p.order) ? p.order : i,
+    }))
+  ).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // Objectives
+  const objectives = uniqById(
+    asArray(data.objectives).map((o, i) => ({
+      id: o.id ?? `OBJ_${i + 1}`,
+      text: (o.text ?? o.name ?? "").trim(),
+      moes: o.moes ?? "",
+    }))
+  ).filter((o) => o.text);
+
+  // DPs
+  const dp = uniqById(
+    asArray(data.dp).map((d, i) => ({
+      id: d.id ?? `DP_${i + 1}`,
+      text: (d.text ?? d.name ?? "").trim(),
+      phaseId: d.phaseId ?? null,
+      loeId: d.loeId && loeIds.has(d.loeId) ? d.loeId : null,
+      effectId: d.effectId && effIds.has(d.effectId) ? d.effectId : null,
+    }))
+  ).filter((d) => d.text);
+
+  // COGs
+  const cogs = {
+    friendly: {
+      cog: data.cogs?.friendly?.cog ?? "",
+      cc: asArray(data.cogs?.friendly?.cc),
+      cr: asArray(data.cogs?.friendly?.cr),
+      cv: asArray(data.cogs?.friendly?.cv),
+    },
+    adversary: {
+      cog: data.cogs?.adversary?.cog ?? "",
+      cc: asArray(data.cogs?.adversary?.cc),
+      cr: asArray(data.cogs?.adversary?.cr),
+      cv: asArray(data.cogs?.adversary?.cv),
+    },
+  };
+
+  // Operational risks: accept strings or numbers; clamp; fill ids
+  const opRisks = uniqById(
+    asArray(data.opRisks).map((r, i) => ({
+      id: r.id ?? `R_${i + 1}`,
+      title: (r.title ?? r.name ?? "").trim() || `Risk ${i + 1}`,
+      description: r.description ?? "",
+      owner: r.owner ?? "",
+      mitigation: r.mitigation ?? "",
+      likelihood: toScore(r.likelihood),
+      impact: toScore(r.impact),
+      loeId: r.loeId && loeIds.has(r.loeId) ? r.loeId : null,
+      phaseId: r.phaseId ?? null,
+    }))
+  );
+
+  // Visibility toggles
+  const visibility = {
+    ...initialState.visibility,
+    ...(typeof data.visibility === "object" ? data.visibility : {}),
+  };
+
+  return {
+    problemStatement: data.problemStatement ?? "",
+    currentOE: data.currentOE ?? "",
+    desiredConditions,
+    endState: data.endState ?? data.militaryEndState ?? "",
+    phases,
+    objectives,
+    loes,
+    effects,
+    tasks,
+    dp,
+    cogs,
+    opRisks,
+    visibility,
+    commsStrategy: data.commsStrategy ?? "",
+  };
 }
 
-export const useOAStore = create((set,get)=> ({
-  ...loadInitial(),
+// ---- IMPORT/EXPORT ----
 
-  save(){ try{ localStorage.setItem('oa_state_v1', JSON.stringify(get())) }catch{} },
+export async function importFromFile(file) {
+  const text = await file.text();
+  const raw = JSON.parse(text);
+  return normalize(raw);
+}
 
-  undo(){ const s=get(); const prev=s.undoStack.pop(); if(prev) set({...prev, undoStack:s.undoStack}) },
-  _pushUndo(fn){ const ss=JSON.parse(JSON.stringify(get())); set({undoStack:[...get().undoStack, ss]}); fn(); get().save() },
-
-  addPhase(){ get()._pushUndo(()=> set(s=> ({ phases:[...s.phases,{id:uid('PH'), name:`Phase ${s.phases.length+1}`, subtitle:''}] }))) },
-  addObjective(){ get()._pushUndo(()=> set(s=> ({ objectives:[...s.objectives,{id:uid('OBJ'), text:'', moes:''}] }))) },
-  addLoe(){ get()._pushUndo(()=> set(s=> ({ loes:[...s.loes,{id:uid('LOE'), title:'', notes:''}] }))) },
-  addEffect(){ get()._pushUndo(()=> set(s=> ({ effects:[...s.effects,{id:uid('EFF'), loeId:s.loes[0]?.id||'', text:'', objectives:[], phaseId:s.phases[0]?.id||'', moes:''}] }))) },
-  addTask(){ get()._pushUndo(()=> set(s=> ({ tasks:[...s.tasks,{id:uid('TSK'), effectId:s.effects[0]?.id||'', text:'', phaseId:s.phases[0]?.id||'', mops:'', risk:{likelihood:1, impact:1}}] }))) },
-
-  softDelete({type, ...entity}){
-    get()._pushUndo(()=> {
-      const s = get()
-      const trash = [...s.trash, { type, ...entity, deletedAt: Date.now() }]
-      if(type==='phase'){
-        set({
-          phases: s.phases.filter(p=>p.id!==entity.id),
-          effects: s.effects.map(e=> e.phaseId===entity.id?{...e, phaseId:''}:e),
-          tasks:   s.tasks.map(t=> t.phaseId===entity.id?{...t, phaseId:''}:t),
-          dp:      s.dp.map(d=> d.phaseId===entity.id?{...d, phaseId:''}:d),
-          trash
-        })
-      } else if(type==='objective'){
-        set({
-          objectives: s.objectives.filter(o=>o.id!==entity.id),
-          effects: s.effects.map(e=> ({...e, objectives:(e.objectives||[]).filter(oid=>oid!==entity.id)})),
-          trash
-        })
-      } else if(type==='loe'){
-        set({
-          loes: s.loes.filter(l=>l.id!==entity.id),
-          effects: s.effects.map(e=> e.loeId===entity.id?{...e, loeId:''}:e),
-          trash
-        })
-      } else if(type==='effect'){
-        set({
-          effects: s.effects.filter(e=>e.id!==entity.id),
-          tasks: s.tasks.map(t=> t.effectId===entity.id?{...t, effectId:''}:t),
-          trash
-        })
-      } else if(type==='task'){
-        set({ tasks: s.tasks.filter(t=>t.id!==entity.id), trash })
-      }
-    })
-  },
-
-  restoreFromTrash(id){
-    get()._pushUndo(()=> {
-      const s = get()
-      const t = s.trash.find(x=>x.id===id)
-      if(!t) return
-      const keep = s.trash.filter(x=>x.id!==id)
-      if(t.type==='phase') set({ phases:[...s.phases, {id:t.id,name:t.name,subtitle:t.subtitle}], trash:keep })
-      if(t.type==='objective') set({ objectives:[...s.objectives, {id:t.id,text:t.text,moes:t.moes}], trash:keep })
-      if(t.type==='loe') set({ loes:[...s.loes, {id:t.id,title:t.title,notes:t.notes}], trash:keep })
-      if(t.type==='effect') set({ effects:[...s.effects, {id:t.id, loeId:t.loeId||'', text:t.text, objectives:t.objectives||[], phaseId:t.phaseId||'', moes:t.moes||''}], trash:keep })
-      if(t.type==='task') set({ tasks:[...s.tasks, {id:t.id, effectId:t.effectId||'', text:t.text, phaseId:t.phaseId||'', mops:t.mops||'', risk:t.risk||{}}], trash:keep })
-    })
-  },
-
-  purgeTrashItem(id){ get()._pushUndo(()=> set(s=> ({ trash: s.trash.filter(x=> x.id!==id) }))) },
-}))
+export function exportToBlob(state) {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  return blob;
+}
