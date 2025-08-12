@@ -14,3 +14,68 @@ body {
   width: 100%;
   overflow-x: auto;
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: #fff;
+  color: #000;
+  padding: 1rem;
+  border-radius: 8px;
+  min-width: 300px;
+  max-width: 90%;
+}
+.modal-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.modal-h .close {
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.oam-shell { display:flex; flex-direction:column; gap:24px; }
+.oam-inputs { display:flex; flex-direction:column; gap:12px; }
+.oam-columns { display:flex; flex-wrap:wrap; gap:16px; }
+.card { background:#0f1420; border:1px solid #26314a; border-radius:8px; padding:12px; flex:1; min-width:260px; }
+.card-h { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.row-flex { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.row-flex:last-child{margin-bottom:0;}
+.mr8{margin-right:8px;}
+.btn { background:#1f2b45; border:1px solid #2a3757; color:#e8ecf3; border-radius:6px; padding:4px 8px; cursor:pointer; }
+.btn.danger { background:#5e1f1f; border-color:#8a2a2a; }
+.btn.tiny { padding:2px 6px; font-size:12px; }
+.oam-row { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
+.oam-row label { font-size:14px; font-weight:600; }
+.gap8 { gap:8px; }
+.col { flex:1; }
+.board { display:flex; gap:12px; overflow-x:auto; }
+.cell { border:1px solid #2a3757; border-radius:8px; padding:8px; min-width:200px; }
+.cell-h { font-weight:600; margin-bottom:4px; }
+.cell-body { min-height:60px; }
+.placeholder { opacity:0.5; }
+.bullet { display:flex; align-items:center; gap:4px; margin-bottom:4px; }
+.bullet .x { background:none; border:none; color:#e8ecf3; cursor:pointer; }
+.live-h { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.live-title { font-size:20px; font-weight:600; }
+.chiprow { display:flex; gap:8px; flex-wrap:wrap; }
+.chip { padding:4px 6px; border-radius:4px; background:#1f2b45; font-size:12px; }
+.chip-warn { background:#5a3a2f; }
+.chip-risk { background:#4c2323; }
+.live-overview { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.box { background:#0f1420; border:1px solid #26314a; border-radius:8px; padding:8px; flex:1; min-width:200px; }
+.box-h { font-weight:600; margin-bottom:4px; }
+.box-b { font-size:14px; white-space:pre-wrap; }
+.heatmap-wrap { margin-top:16px; }
+.section-h { font-weight:600; margin-bottom:8px; }
