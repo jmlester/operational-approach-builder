@@ -40,3 +40,15 @@
 .risk-grid-side{ font-size:12px; opacity:.7; text-align:right; padding-right:8px; }
 .risk-cell{ height:34px; display:flex; align-items:center; justify-content:center; border:1px solid #243049; border-radius:6px; }
 .risk-has{ background:rgba(255,99,99,.08); border-color:#3b1e1e; }
+
+/* Risk heatmap styles */
+.heatmap { display:flex; }
+.hm-col.labels { display:flex; flex-direction:column; }
+.hm-label-row, .hm-label-col { font-size:12px; text-align:center; padding:4px; }
+.hm-grid { display:flex; flex-direction:column; }
+.hm-row { display:flex; }
+.hm-cell { width:40px; height:40px; border:1px solid #26314a; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.hm-green { background:#2e7d32; }
+.hm-yellow { background:#f9a825; }
+.hm-orange { background:#fb8c00; }
+.hm-red { background:#e53935; }
